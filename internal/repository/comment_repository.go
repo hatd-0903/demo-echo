@@ -7,7 +7,8 @@ import (
 )
 
 type CommentRepository interface {
-	FindByArticleID(articleID uint) ([]models.Comment, error)
+	// FindByArticleID trả về một trang comment (mới nhất trước) và tổng số comment của bài.
+	FindByArticleID(articleID uint, limit, offset int) ([]models.Comment, int64, error)
 	Create(comment *models.Comment) error
 }
 
@@ -20,13 +21,26 @@ func NewCommentRepository(db *gorm.DB) CommentRepository {
 }
 
 // FindByArticleID eager-load tác giả của từng comment trong 1 query phụ (tránh N+1).
-func (r *commentRepository) FindByArticleID(articleID uint) ([]models.Comment, error) {
-	var comments []models.Comment
+// ORDER BY created_at, id dùng được index ghép (article_id, created_at).
+func (r *commentRepository) FindByArticleID(articleID uint, limit, offset int) ([]models.Comment, int64, error) {
+	comments := []models.Comment{}
 	err := r.db.Preload("User", selectProfileColumns).
 		Where("article_id = ?", articleID).
 		Order("created_at DESC").
+		Order("id DESC").
+		Limit(limit).
+		Offset(offset).
 		Find(&comments).Error
-	return comments, err
+	if err != nil {
+		return nil, 0, err
+	}
+	// Như article: trang chưa đầy và không rỗng thì đã biết tổng, bỏ được COUNT(*).
+	if n := len(comments); n > 0 && n < limit {
+		return comments, int64(offset + n), nil
+	}
+	var total int64
+	err = r.db.Model(&models.Comment{}).Where("article_id = ?", articleID).Count(&total).Error
+	return comments, total, err
 }
 
 func (r *commentRepository) Create(comment *models.Comment) error {

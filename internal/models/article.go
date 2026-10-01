@@ -12,12 +12,12 @@ type Article struct {
 	Slug  string `gorm:"size:255;uniqueIndex;not null"`
 	Body  string `gorm:"type:longtext"`
 
-	// BelongsTo: article thuộc về một user (tác giả).
+	// BelongsTo: article thuộc về một user (tác giả). FK + CASCADE khai báo ở User.Articles.
 	AuthorID uint  `gorm:"not null;index"`
-	Author   *User `gorm:"foreignKey:AuthorID;constraint:OnDelete:CASCADE"`
+	Author   *User `gorm:"foreignKey:AuthorID"`
 
-	// HasMany: một article có nhiều comment.
-	Comments []Comment `gorm:"foreignKey:ArticleID"`
+	// HasMany: một article có nhiều comment (xoá cứng article -> xoá comment).
+	Comments []Comment `gorm:"foreignKey:ArticleID;constraint:OnDelete:CASCADE"`
 
 	// Many2Many: article <-> tag qua bảng trung gian article_tags.
 	Tags []Tag `gorm:"many2many:article_tags"`

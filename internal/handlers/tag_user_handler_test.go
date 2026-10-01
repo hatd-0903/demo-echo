@@ -10,7 +10,8 @@ import (
 
 func TestTagCRUD(t *testing.T) {
 	app := newTestApp(t)
-	token, _ := app.register(t, "ha")
+	token, admin := app.register(t, "ha")
+	app.makeAdmin(t, admin.ID)
 	tag := app.createTag(t, token, "go")
 	article := app.createArticle(t, token, "Tagged", tag.ID)
 	path := "/api/tags/" + itoa(tag.ID)
@@ -42,17 +43,29 @@ func TestUserEndpointsRequireLogin(t *testing.T) {
 	expectError(t, app.do(t, http.MethodGet, "/api/users", nil, ""), http.StatusUnauthorized, "")
 
 	rec := app.do(t, http.MethodGet, "/api/users", nil, haToken)
-	users := decode[[]dto.UserResponse](t, rec, http.StatusOK).Data
+	users := decode[[]dto.ProfileResponse](t, rec, http.StatusOK).Data
 	if len(users) != 2 {
 		t.Errorf("users = %+v", users)
 	}
-	if strings.Contains(rec.Body.String(), "password") {
-		t.Errorf("user list must not expose password: %s", rec.Body.String())
+	for _, field := range []string{"password", "email", "@example.com", "role"} {
+		if strings.Contains(rec.Body.String(), field) {
+			t.Errorf("user list must not expose %q: %s", field, rec.Body.String())
+		}
 	}
 
 	path := "/api/users/" + itoa(ha.ID)
-	if got := decode[dto.UserResponse](t, app.do(t, http.MethodGet, path, nil, haToken), http.StatusOK).Data; got.Username != "ha" {
+	rec = app.do(t, http.MethodGet, path, nil, haToken)
+	if got := decode[dto.ProfileResponse](t, rec, http.StatusOK).Data; got.Username != "ha" {
 		t.Errorf("user = %+v", got)
+	}
+	if strings.Contains(rec.Body.String(), "@example.com") {
+		t.Errorf("user detail must not expose email: %s", rec.Body.String())
+	}
+
+	// Email + role chỉ có ở thông tin của chính mình.
+	me := decode[dto.AuthUserResponse](t, app.do(t, http.MethodGet, "/api/user", nil, haToken), http.StatusOK).Data
+	if me.Email != "ha@example.com" || me.Role != "user" {
+		t.Errorf("GET /api/user = %+v", me.UserResponse)
 	}
 	expectError(t, app.do(t, http.MethodGet, "/api/users/999", nil, haToken), http.StatusNotFound, "")
 

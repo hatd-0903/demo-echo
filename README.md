@@ -34,8 +34,31 @@ demo_echo/
 - `Article` / `Comment` BelongsTo `User`, `Comment` BelongsTo `Article`
 
 API không bao giờ trả model trực tiếp: handler map model -> DTO trong `internal/dto`.
-`ProfileResponse` (username, bio, image) được dùng làm `author` của article/comment
-nên email, password không bao giờ lộ ra ngoài.
+Thông tin user có hai mức:
+
+- `UserResponse` (có email, role) **chỉ** trả cho chính chủ tài khoản: đăng ký, đăng nhập,
+  `GET /api/user`, `PUT /api/users/:id` của mình.
+- `ProfileResponse` (username, bio, image) cho mọi chỗ xem user khác: `GET /api/users`,
+  `GET /api/users/:id`, `/api/profiles/*`, `author` của article/comment.
+
+Xoá tài khoản là **xoá thật** (không soft delete): username/email được giải phóng để đăng ký lại,
+và FK `ON DELETE CASCADE` dọn sạch article (kể cả bảng nối tag), comment, follow của user đó.
+Token cũ bị từ chối ngay vì middleware JWT nạp lại user từ DB mỗi request.
+
+## Phân quyền
+
+| Ai | Được làm |
+|----|----------|
+| Khách | Xem article, comment, tag, profile |
+| User đăng nhập | Viết/sửa/xoá **bài của mình**, comment, follow, **tạo** tag |
+| Admin | Thêm: **đổi tên / xoá** tag (tag dùng chung cho mọi article) |
+
+Role đọc từ DB mỗi request nên cấp / thu hồi có hiệu lực ngay với token đang dùng:
+
+```bash
+make admin EMAIL=alice@example.com          # cấp admin
+go run ./cmd/manage set-role -email alice@example.com user   # thu hồi
+```
 
 ## Chạy
 
@@ -79,6 +102,15 @@ Dùng file khác bằng `ENV_FILE`, ví dụ `ENV_FILE=.env.staging make run`.
 | `REDIS_URL`      | (trống)       | Trống = tắt cache. Vd `redis://127.0.0.1:6379/0`                |
 | `CACHE_TTL`      | `5m`          | Thời gian sống của response đã cache                            |
 | `SWAGGER_ENABLED`| theo `APP_ENV`| Bật Swagger UI; mặc định bật ở development, tắt ở production    |
+| `DB_AUTO_MIGRATE`| theo `APP_ENV`| Migrate khi server khởi động; tắt ở production -> chạy `make migrate` |
+
+Khác:
+
+- Thời gian trong DB được đọc/ghi theo **UTC** (`loc=UTC` trong DSN), không phụ thuộc timezone máy chạy app.
+- Body request tối đa **1 MB** (`server.MaxBodySize`), vượt quá trả 413.
+- Production: chạy `make migrate` (hoặc `go run ./cmd/manage migrate`) trước khi deploy. Dự án lớn hơn
+  nên chuyển sang migration có version (goose / golang-migrate); `database.Migrate` hiện dựa trên
+  `AutoMigrate` + vài bước sửa schema viết tay (tạo lại FK thành CASCADE, bỏ soft delete của user).
 
 Config được validate lúc khởi động: sai giá trị (port không phải số, duration sai, thiếu secret
 ở production...) thì server dừng ngay với thông báo rõ ràng thay vì chạy với cấu hình hỏng.
@@ -162,8 +194,8 @@ Tự skip nếu MySQL/Redis không chạy.
 | POST   | /api/users                    | Đăng ký, trả về user + token            |
 | POST   | /api/users/login              | Đăng nhập, trả về user + token          |
 | GET    | /api/user                     | 🔒 User hiện tại (theo token)           |
-| GET    | /api/users                    | 🔒 Danh sách user                       |
-| GET    | /api/users/:id                | 🔒 Chi tiết user                        |
+| GET    | /api/users                    | 🔒 Danh sách user (profile, không email) |
+| GET    | /api/users/:id                | 🔒 Chi tiết user (profile, không email)  |
 | PUT    | /api/users/:id                | 🔒 Cập nhật (chỉ chính mình — `RequireOwner`) |
 | DELETE | /api/users/:id                | 🔒 Xoá (chỉ chính mình — `RequireOwner`) |
 | GET    | /api/profiles/:username       | Profile công khai (token tuỳ chọn → `following`) |
@@ -175,13 +207,13 @@ Tự skip nếu MySQL/Redis không chạy.
 | POST   | /api/articles                 | 🔒 Tạo article (tác giả = user từ token)|
 | PUT    | /api/articles/:slug           | 🔒 Cập nhật (chỉ tác giả — `RequireOwner`) |
 | DELETE | /api/articles/:slug           | 🔒 Xoá (chỉ tác giả — `RequireOwner`)   |
-| GET    | /api/articles/:slug/comments  | Danh sách comment                       |
+| GET    | /api/articles/:slug/comments  | Danh sách comment (`limit`, `offset`)   |
 | POST   | /api/articles/:slug/comments  | 🔒 Thêm comment                         |
 | GET    | /api/tags                     | Danh sách tag                           |
 | GET    | /api/tags/:id                 | Chi tiết tag                            |
 | POST   | /api/tags                     | 🔒 Tạo tag                              |
-| PUT    | /api/tags/:id                 | 🔒 Đổi tên tag                          |
-| DELETE | /api/tags/:id                 | 🔒 Xoá tag                              |
+| PUT    | /api/tags/:id                 | 🔒 Đổi tên tag (**admin**)              |
+| DELETE | /api/tags/:id                 | 🔒 Xoá tag (**admin**)                  |
 
 ### Query params cho `GET /api/articles` và `/api/articles/feed`
 

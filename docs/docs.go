@@ -432,7 +432,7 @@ const docTemplate = `{
         },
         "/articles/{slug}/comments": {
             "get": {
-                "description": "Mới nhất trước.",
+                "description": "Mới nhất trước, có phân trang.",
                 "produces": [
                     "application/json"
                 ],
@@ -448,6 +448,20 @@ const docTemplate = `{
                         "name": "slug",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Số comment mỗi trang (1-100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Bỏ qua bao nhiêu comment",
+                        "name": "offset",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -462,14 +476,17 @@ const docTemplate = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "type": "array",
-                                            "items": {
-                                                "$ref": "#/definitions/dto.CommentResponse"
-                                            }
+                                            "$ref": "#/definitions/dto.CommentListResponse"
                                         }
                                     }
                                 }
                             ]
+                        }
+                    },
+                    "400": {
+                        "description": "Param không hợp lệ",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     },
                     "404": {
@@ -911,6 +928,7 @@ const docTemplate = `{
                         "TokenAuth": []
                     }
                 ],
+                "description": "Chỉ admin: tag dùng chung cho mọi article.",
                 "consumes": [
                     "application/json"
                 ],
@@ -920,7 +938,7 @@ const docTemplate = `{
                 "tags": [
                     "tags"
                 ],
-                "summary": "Đổi tên tag",
+                "summary": "Đổi tên tag (admin)",
                 "parameters": [
                     {
                         "type": "integer",
@@ -970,6 +988,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     },
+                    "403": {
+                        "description": "Không phải admin",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
                     "404": {
                         "description": "Không tìm thấy",
                         "schema": {
@@ -996,11 +1020,11 @@ const docTemplate = `{
                         "TokenAuth": []
                     }
                 ],
-                "description": "Tag cũng bị gỡ khỏi mọi article.",
+                "description": "Chỉ admin. Tag cũng bị gỡ khỏi mọi article.",
                 "tags": [
                     "tags"
                 ],
-                "summary": "Xoá tag",
+                "summary": "Xoá tag (admin)",
                 "parameters": [
                     {
                         "type": "integer",
@@ -1022,6 +1046,12 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Thiếu hoặc sai token",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Không phải admin",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -1085,6 +1115,7 @@ const docTemplate = `{
                         "TokenAuth": []
                     }
                 ],
+                "description": "Chỉ trả thông tin công khai (không có email). Email của chính mình: GET /user.",
                 "produces": [
                     "application/json"
                 ],
@@ -1106,7 +1137,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/dto.UserResponse"
+                                                "$ref": "#/definitions/dto.ProfileResponse"
                                             }
                                         }
                                     }
@@ -1250,6 +1281,7 @@ const docTemplate = `{
                         "TokenAuth": []
                     }
                 ],
+                "description": "Chỉ trả thông tin công khai (không có email).",
                 "produces": [
                     "application/json"
                 ],
@@ -1278,7 +1310,7 @@ const docTemplate = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/dto.UserResponse"
+                                            "$ref": "#/definitions/dto.ProfileResponse"
                                         }
                                     }
                                 }
@@ -1531,6 +1563,14 @@ const docTemplate = `{
                     "type": "string",
                     "example": "https://i.pravatar.cc/150"
                 },
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "user",
+                        "admin"
+                    ],
+                    "example": "user"
+                },
                 "token": {
                     "type": "string",
                     "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
@@ -1541,6 +1581,29 @@ const docTemplate = `{
                 "username": {
                     "type": "string",
                     "example": "alice"
+                }
+            }
+        },
+        "dto.CommentListResponse": {
+            "type": "object",
+            "properties": {
+                "comments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.CommentResponse"
+                    }
+                },
+                "comments_count": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "limit": {
+                    "type": "integer",
+                    "example": 20
+                },
+                "offset": {
+                    "type": "integer",
+                    "example": 0
                 }
             }
         },
@@ -1743,6 +1806,14 @@ const docTemplate = `{
                 "image": {
                     "type": "string",
                     "example": "https://i.pravatar.cc/150"
+                },
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "user",
+                        "admin"
+                    ],
+                    "example": "user"
                 },
                 "updated_at": {
                     "type": "string"

@@ -12,6 +12,9 @@ import (
 	echoSwagger "github.com/swaggo/echo-swagger"
 )
 
+// MaxBodySize là kích thước body tối đa cho mỗi request.
+const MaxBodySize = "1M"
+
 type Options struct {
 	LogRequests bool
 	// Swagger bật Swagger UI tại /swagger/index.html và spec tại /swagger/doc.json.
@@ -30,6 +33,9 @@ func New(d routes.Deps, opts Options) *echo.Echo {
 		e.Use(middleware.RequestLogger())
 	}
 	e.Use(middleware.Recover())
+	// Giới hạn body: không có giới hạn thì một request JSON vài trăm MB bị đọc hết vào RAM.
+	// Vượt giới hạn -> 413 Request Entity Too Large.
+	e.Use(middleware.BodyLimit(MaxBodySize))
 	e.Use(middleware.CORS())
 
 	routes.Register(e, d)

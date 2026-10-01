@@ -38,9 +38,10 @@ func TestComments(t *testing.T) {
 		decode[dto.CommentResponse](t, app.do(t, http.MethodPost, path, `{"body":"second"}`, authorToken), http.StatusCreated)
 
 		rec := app.do(t, http.MethodGet, path, nil, "")
-		comments := decode[[]dto.CommentResponse](t, rec, http.StatusOK).Data
-		if len(comments) != 2 || comments[0].Body != "second" || comments[1].Body != "first" {
-			t.Errorf("comments = %+v", comments)
+		page := decode[dto.CommentListResponse](t, rec, http.StatusOK).Data
+		comments := page.Comments
+		if len(comments) != 2 || comments[0].Body != "second" || comments[1].Body != "first" || page.CommentsCount != 2 {
+			t.Errorf("comments = %+v", page)
 		}
 		if strings.Contains(rec.Body.String(), "@example.com") {
 			t.Errorf("comment authors must not expose email: %s", rec.Body.String())
@@ -50,8 +51,25 @@ func TestComments(t *testing.T) {
 	t.Run("article without comments returns empty array", func(t *testing.T) {
 		app.createArticle(t, authorToken, "Quiet")
 		rec := app.do(t, http.MethodGet, "/api/articles/quiet/comments", nil, "")
-		if !strings.Contains(rec.Body.String(), `"data":[]`) {
-			t.Errorf("want data:[], got %s", rec.Body.String())
+		if !strings.Contains(rec.Body.String(), `"comments":[]`) {
+			t.Errorf("want comments:[], got %s", rec.Body.String())
+		}
+	})
+
+	t.Run("paginated", func(t *testing.T) {
+		app.createArticle(t, authorToken, "Busy")
+		for i := 1; i <= 5; i++ {
+			decode[any](t, app.do(t, http.MethodPost, "/api/articles/busy/comments",
+				map[string]string{"body": "c" + itoa(uint(i))}, readerToken), http.StatusCreated)
+		}
+		page := decode[dto.CommentListResponse](t, app.do(t, http.MethodGet, "/api/articles/busy/comments?limit=2&offset=2", nil, ""), http.StatusOK).Data
+		if page.CommentsCount != 5 || len(page.Comments) != 2 || page.Comments[0].Body != "c3" || page.Comments[1].Body != "c2" {
+			t.Errorf("page = %+v", page)
+		}
+		expectError(t, app.do(t, http.MethodGet, "/api/articles/busy/comments?limit=0", nil, ""), http.StatusBadRequest, "")
+		page = decode[dto.CommentListResponse](t, app.do(t, http.MethodGet, "/api/articles/busy/comments?limit=500", nil, ""), http.StatusOK).Data
+		if page.Limit != 100 {
+			t.Errorf("limit should clamp to 100, got %d", page.Limit)
 		}
 	})
 }

@@ -107,9 +107,10 @@ func TestUserJourney(t *testing.T) {
 		e.call(t, "POST", path, bobToken, map[string]string{"body": "Bài viết hay quá!"}).expect(t, http.StatusCreated, nil)
 		e.call(t, "POST", path, aliceToken, map[string]string{"body": "Cảm ơn bạn"}).expect(t, http.StatusCreated, nil)
 
-		var comments []dto.CommentResponse
+		var page dto.CommentListResponse
 		res := e.call(t, "GET", path, "", nil)
-		res.expect(t, http.StatusOK, &comments)
+		res.expect(t, http.StatusOK, &page)
+		comments := page.Comments
 		if len(comments) != 2 || comments[0].Author.Username != "alice" || comments[1].Author.Username != "bob" {
 			t.Errorf("comments (newest first) = %+v", comments)
 		}

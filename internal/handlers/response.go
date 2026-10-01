@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"demo_echo/internal/middleware"
+	"demo_echo/internal/models"
 
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
@@ -54,13 +55,22 @@ func parseID(c echo.Context) (uint, error) {
 	return uint(id), nil
 }
 
-// requireUserID lấy user ID từ JWT; dùng trong các route đã gắn middleware.JWT.
-func requireUserID(c echo.Context) (uint, error) {
-	id, ok := middleware.CurrentUserID(c)
+// requireUser lấy user đang đăng nhập (middleware.JWT đã nạp từ DB).
+func requireUser(c echo.Context) (*models.User, error) {
+	user, ok := middleware.CurrentUser(c)
 	if !ok {
-		return 0, echo.NewHTTPError(http.StatusUnauthorized, "missing or invalid token")
+		return nil, echo.NewHTTPError(http.StatusUnauthorized, "missing or invalid token")
 	}
-	return id, nil
+	return user, nil
+}
+
+// requireUserID như requireUser nhưng chỉ cần ID.
+func requireUserID(c echo.Context) (uint, error) {
+	user, err := requireUser(c)
+	if err != nil {
+		return 0, err
+	}
+	return user.ID, nil
 }
 
 // ErrorHandler định dạng mọi lỗi của Echo (404 route, 405, HTTPError...) theo cùng format Response.
@@ -87,4 +97,28 @@ func ErrorHandler(err error, c echo.Context) {
 		return
 	}
 	_ = failure(c, status, msg)
+}
+
+const (
+	defaultPageLimit = 20
+	maxPageLimit     = 100
+)
+
+// parsePage đọc ?limit=&offset= dùng chung cho các endpoint danh sách.
+// limit mặc định 20, lớn hơn 100 thì hạ xuống 100.
+func parsePage(c echo.Context) (limit, offset int, err error) {
+	limit = defaultPageLimit
+	if err := echo.QueryParamsBinder(c).
+		Int("limit", &limit).
+		Int("offset", &offset).
+		BindError(); err != nil {
+		return 0, 0, echo.NewHTTPError(http.StatusBadRequest, "limit and offset must be integers")
+	}
+	if limit < 1 {
+		return 0, 0, echo.NewHTTPError(http.StatusBadRequest, "limit must be greater than 0")
+	}
+	if offset < 0 {
+		return 0, 0, echo.NewHTTPError(http.StatusBadRequest, "offset must not be negative")
+	}
+	return min(limit, maxPageLimit), offset, nil
 }

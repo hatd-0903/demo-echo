@@ -23,10 +23,11 @@ func NewUserHandler(repo repository.UserRepository) *UserHandler {
 
 // List godoc
 // @Summary      Danh sách user
+// @Description  Chỉ trả thông tin công khai (không có email). Email của chính mình: GET /user.
 // @Tags         users
 // @Produce      json
 // @Security     TokenAuth
-// @Success      200  {object}  handlers.Response{data=[]dto.UserResponse}  "OK"
+// @Success      200  {object}  handlers.Response{data=[]dto.ProfileResponse}  "OK"
 // @Failure      401  {object}  handlers.ErrorResponse  "Thiếu hoặc sai token"
 // @Router       /users [get]
 func (h *UserHandler) List(c echo.Context) error {
@@ -34,16 +35,17 @@ func (h *UserHandler) List(c echo.Context) error {
 	if err != nil {
 		return dbError(c, err)
 	}
-	return success(c, http.StatusOK, dto.NewUserListResponse(users))
+	return success(c, http.StatusOK, dto.NewProfileListResponse(users))
 }
 
 // Get godoc
 // @Summary      Chi tiết user
+// @Description  Chỉ trả thông tin công khai (không có email).
 // @Tags         users
 // @Produce      json
 // @Security     TokenAuth
 // @Param        id    path  int     true  "ID user"
-// @Success      200  {object}  handlers.Response{data=dto.UserResponse}  "OK"
+// @Success      200  {object}  handlers.Response{data=dto.ProfileResponse}  "OK"
 // @Failure      400  {object}  handlers.ErrorResponse  "Body/param không hợp lệ"
 // @Failure      401  {object}  handlers.ErrorResponse  "Thiếu hoặc sai token"
 // @Failure      404  {object}  handlers.ErrorResponse  "Không tìm thấy"
@@ -57,7 +59,7 @@ func (h *UserHandler) Get(c echo.Context) error {
 	if err != nil {
 		return dbError(c, err)
 	}
-	return success(c, http.StatusOK, dto.NewUserResponse(user))
+	return success(c, http.StatusOK, dto.NewProfileResponse(user))
 }
 
 // Update godoc

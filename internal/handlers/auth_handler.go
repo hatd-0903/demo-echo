@@ -59,7 +59,7 @@ func (h *AuthHandler) Register(c echo.Context) error {
 		return failure(c, http.StatusInternalServerError, "could not hash password")
 	}
 
-	user := &models.User{Username: req.Username, Email: req.Email, Password: hash}
+	user := &models.User{Username: req.Username, Email: req.Email, Password: hash, Role: models.RoleUser}
 	if err := h.userRepo.Create(user); err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
 			return failure(c, http.StatusConflict, "username or email already taken")
@@ -90,10 +90,12 @@ func (h *AuthHandler) Login(c echo.Context) error {
 		return failure(c, http.StatusUnprocessableEntity, "email and password are required")
 	}
 
-	// Cùng một thông báo lỗi cho "sai email" và "sai mật khẩu" để không lộ email nào đã đăng ký.
+	// "Sai email" và "sai mật khẩu" trả cùng thông báo và tốn cùng thời gian (đều chạy bcrypt)
+	// để không thể dò ra email nào đã đăng ký.
 	user, err := h.userRepo.FindByEmail(email)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
+			auth.CheckPasswordAgainstDummy(req.Password)
 			return failure(c, http.StatusUnauthorized, "invalid email or password")
 		}
 		return dbError(c, err)
@@ -114,17 +116,9 @@ func (h *AuthHandler) Login(c echo.Context) error {
 // @Failure      401  {object}  handlers.ErrorResponse  "Thiếu hoặc sai token"
 // @Router       /user [get]
 func (h *AuthHandler) Current(c echo.Context) error {
-	id, err := requireUserID(c)
+	user, err := requireUser(c) // middleware.JWT đã nạp từ DB (user bị xoá -> 401 ở đó)
 	if err != nil {
 		return err
-	}
-	user, err := h.userRepo.FindByID(id)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			// Token hợp lệ nhưng user đã bị xoá.
-			return failure(c, http.StatusUnauthorized, "user no longer exists")
-		}
-		return dbError(c, err)
 	}
 	return h.respondWithToken(c, http.StatusOK, user)
 }

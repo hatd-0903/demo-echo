@@ -25,13 +25,16 @@ type UpdateUserRequest struct {
 	Image    *string `json:"image" example:"https://i.pravatar.cc/150"`
 }
 
-// UserResponse là thông tin user đầy đủ (không có password).
+// UserResponse là thông tin đầy đủ (có email, role; không có password) và CHỈ được trả
+// cho chính chủ tài khoản: GET /user, đăng ký/đăng nhập, PUT /users/:id của mình.
+// Mọi chỗ xem user khác phải dùng ProfileResponse.
 type UserResponse struct {
 	ID        uint      `json:"id" example:"1"`
 	Username  string    `json:"username" example:"alice"`
 	Email     string    `json:"email" example:"alice@example.com"`
 	Bio       string    `json:"bio" example:"Gopher ở Hà Nội"`
 	Image     string    `json:"image" example:"https://i.pravatar.cc/150"`
+	Role      string    `json:"role" example:"user" enums:"user,admin"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -59,6 +62,7 @@ func NewUserResponse(u *models.User) UserResponse {
 		Email:     u.Email,
 		Bio:       u.Bio,
 		Image:     u.Image,
+		Role:      u.Role,
 		CreatedAt: u.CreatedAt,
 		UpdatedAt: u.UpdatedAt,
 	}
@@ -68,8 +72,8 @@ func NewAuthUserResponse(u *models.User, token string) AuthUserResponse {
 	return AuthUserResponse{UserResponse: NewUserResponse(u), Token: token}
 }
 
-func NewUserListResponse(users []models.User) []UserResponse {
-	return mapSlice(users, NewUserResponse)
+func NewProfileListResponse(users []models.User) []*ProfileResponse {
+	return mapSlice(users, NewProfileResponse)
 }
 
 // NewProfileWithFollowing dùng cho /api/profiles: kèm trạng thái người xem có đang follow hay không.

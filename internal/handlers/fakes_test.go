@@ -28,6 +28,10 @@ type fakeDB struct {
 
 	lastID uint
 	clock  time.Time
+
+	// beforeArticleInsert (nếu có) chạy ngay trước khi ghi article, sau khi handler đã
+	// chọn slug: dùng để tái hiện race "request khác vừa chiếm đúng slug này".
+	beforeArticleInsert func(db *fakeDB, article *models.Article)
 }
 
 func newFakeDB() *fakeDB {
@@ -134,10 +138,27 @@ func (r fakeUsers) Update(user *models.User) error {
 	return nil
 }
 
+// Delete mô phỏng DELETE thật + FK ON DELETE CASCADE.
 func (r fakeUsers) Delete(id uint) error {
 	r.db.mu.Lock()
 	defer r.db.mu.Unlock()
 	delete(r.db.users, id)
+	for aid, a := range r.db.articles {
+		if a.AuthorID == id {
+			delete(r.db.articles, aid)
+			delete(r.db.articleTags, aid)
+		}
+	}
+	for cid, c := range r.db.comments {
+		if _, ok := r.db.articles[c.ArticleID]; c.UserID == id || !ok {
+			delete(r.db.comments, cid)
+		}
+	}
+	for k := range r.db.follows {
+		if k[0] == id || k[1] == id {
+			delete(r.db.follows, k)
+		}
+	}
 	return nil
 }
 
@@ -241,9 +262,25 @@ func (r fakeArticles) SlugsLike(base string) ([]string, error) {
 	return slugs, nil
 }
 
+func (r fakeArticles) slugTaken(slug string, exceptID uint) bool {
+	for _, a := range r.db.articles {
+		if a.Slug == slug && a.ID != exceptID {
+			return true
+		}
+	}
+	return false
+}
+
 func (r fakeArticles) Create(article *models.Article) error {
 	r.db.mu.Lock()
 	defer r.db.mu.Unlock()
+	if hook := r.db.beforeArticleInsert; hook != nil {
+		r.db.beforeArticleInsert = nil // chỉ chạy một lần
+		hook(r.db, article)
+	}
+	if r.slugTaken(article.Slug, 0) {
+		return gorm.ErrDuplicatedKey // unique index trên slug
+	}
 	article.ID = r.db.nextID()
 	article.CreatedAt = r.db.tick()
 	article.UpdatedAt = article.CreatedAt
@@ -259,6 +296,9 @@ func (r fakeArticles) Create(article *models.Article) error {
 func (r fakeArticles) Update(article *models.Article, tags []models.Tag) error {
 	r.db.mu.Lock()
 	defer r.db.mu.Unlock()
+	if r.slugTaken(article.Slug, article.ID) {
+		return gorm.ErrDuplicatedKey
+	}
 	article.UpdatedAt = r.db.tick()
 	if tags != nil {
 		ids := []uint{}
@@ -363,7 +403,7 @@ func (r fakeComments) hydrate(c models.Comment) models.Comment {
 	return c
 }
 
-func (r fakeComments) FindByArticleID(articleID uint) ([]models.Comment, error) {
+func (r fakeComments) FindByArticleID(articleID uint, limit, offset int) ([]models.Comment, int64, error) {
 	r.db.mu.Lock()
 	defer r.db.mu.Unlock()
 	comments := []models.Comment{}
@@ -373,7 +413,9 @@ func (r fakeComments) FindByArticleID(articleID uint) ([]models.Comment, error) 
 		}
 	}
 	sort.Slice(comments, func(i, j int) bool { return comments[i].CreatedAt.After(comments[j].CreatedAt) })
-	return comments, nil
+	start := min(offset, len(comments))
+	end := min(start+limit, len(comments))
+	return append([]models.Comment{}, comments[start:end]...), int64(len(comments)), nil
 }
 
 func (r fakeComments) Create(comment *models.Comment) error {

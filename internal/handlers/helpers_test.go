@@ -13,6 +13,7 @@ import (
 	"demo_echo/internal/auth"
 	"demo_echo/internal/cache"
 	"demo_echo/internal/dto"
+	"demo_echo/internal/models"
 	"demo_echo/internal/routes"
 	"demo_echo/internal/server"
 
@@ -131,6 +132,16 @@ func (a *testApp) register(t *testing.T, username string) (string, dto.AuthUserR
 	}, "")
 	user := decode[dto.AuthUserResponse](t, rec, http.StatusCreated).Data
 	return user.Token, user
+}
+
+// makeAdmin cấp role admin trực tiếp trong DB giả (như `cmd/manage set-role`).
+func (a *testApp) makeAdmin(t *testing.T, userID uint) {
+	t.Helper()
+	a.db.mu.Lock()
+	defer a.db.mu.Unlock()
+	u := a.db.users[userID]
+	u.Role = models.RoleAdmin
+	a.db.users[userID] = u
 }
 
 func (a *testApp) createTag(t *testing.T, token, name string) dto.TagResponse {

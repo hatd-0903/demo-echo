@@ -8,6 +8,7 @@ import (
 	"demo_echo/internal/cache"
 	"demo_echo/internal/handlers"
 	"demo_echo/internal/middleware"
+	"demo_echo/internal/models"
 	"demo_echo/internal/repository"
 
 	"github.com/labstack/echo/v4"
@@ -45,15 +46,18 @@ func Register(e *echo.Echo, d Deps) {
 
 	authHandler := handlers.NewAuthHandler(d.Users, d.Tokens)
 	userHandler := handlers.NewUserHandler(d.Users)
-	articleHandler := handlers.NewArticleHandler(d.Articles, d.Users, d.Tags)
+	articleHandler := handlers.NewArticleHandler(d.Articles, d.Tags)
 	tagHandler := handlers.NewTagHandler(d.Tags)
-	commentHandler := handlers.NewCommentHandler(d.Comments, d.Articles, d.Users)
+	commentHandler := handlers.NewCommentHandler(d.Comments, d.Articles)
 	profileHandler := handlers.NewProfileHandler(d.Users, d.Follows)
 
 	// requireAuth gắn theo từng route (không dùng Group middleware) để các route
 	// public và private cùng prefix như /api/users không ảnh hưởng lẫn nhau.
-	requireAuth := middleware.JWT(d.Tokens)
-	optionalAuth := middleware.OptionalJWT(d.Tokens)
+	// JWT nạp user từ DB: token của tài khoản đã xoá bị từ chối ngay, role luôn mới nhất.
+	loadUser := func(id uint) (*models.User, error) { return d.Users.FindByID(id) }
+	requireAuth := middleware.JWT(d.Tokens, loadUser)
+	optionalAuth := middleware.OptionalJWT(d.Tokens, loadUser)
+	requireAdmin := middleware.RequireAdmin
 
 	// Kiểm tra quyền sở hữu: phải đặt sau requireAuth.
 	ownsArticle := middleware.RequireOwner(articleHandler.LoadOwner, "you are not the author of this article")
@@ -103,10 +107,12 @@ func Register(e *echo.Echo, d Deps) {
 	api.GET("/articles/:slug/comments", commentHandler.List)
 	api.POST("/articles/:slug/comments", commentHandler.Create, requireAuth)
 
-	// Tags
+	// Tags: tag dùng chung toàn hệ thống (không có chủ sở hữu). Ai đăng nhập cũng tạo được
+	// để gắn vào bài viết, nhưng đổi tên / xoá ảnh hưởng mọi article nên chỉ admin được làm.
+	// Cấp quyền admin: go run ./cmd/manage set-role -email <email> admin
 	api.GET("/tags", tagHandler.List, cacheTags)
 	api.GET("/tags/:id", tagHandler.Get)
 	api.POST("/tags", tagHandler.Create, requireAuth, invalidateTags)
-	api.PUT("/tags/:id", tagHandler.Update, requireAuth, invalidateTags)
-	api.DELETE("/tags/:id", tagHandler.Delete, requireAuth, invalidateTags)
+	api.PUT("/tags/:id", tagHandler.Update, requireAuth, requireAdmin, invalidateTags)
+	api.DELETE("/tags/:id", tagHandler.Delete, requireAuth, requireAdmin, invalidateTags)
 }

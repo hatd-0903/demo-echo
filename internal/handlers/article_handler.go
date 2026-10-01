@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -16,16 +18,16 @@ import (
 	"golang.org/x/text/runes"
 	"golang.org/x/text/transform"
 	"golang.org/x/text/unicode/norm"
+	"gorm.io/gorm"
 )
 
 type ArticleHandler struct {
-	repo     repository.ArticleRepository
-	userRepo repository.UserRepository
-	tagRepo  repository.TagRepository
+	repo    repository.ArticleRepository
+	tagRepo repository.TagRepository
 }
 
-func NewArticleHandler(repo repository.ArticleRepository, userRepo repository.UserRepository, tagRepo repository.TagRepository) *ArticleHandler {
-	return &ArticleHandler{repo: repo, userRepo: userRepo, tagRepo: tagRepo}
+func NewArticleHandler(repo repository.ArticleRepository, tagRepo repository.TagRepository) *ArticleHandler {
+	return &ArticleHandler{repo: repo, tagRepo: tagRepo}
 }
 
 var nonSlugChars = regexp.MustCompile(`[^a-z0-9]+`)
@@ -42,6 +44,61 @@ func slugify(title string) string {
 		s = "article"
 	}
 	return s
+}
+
+// maxSlugAttempts: số lần thử khi slug vừa chọn bị request khác chiếm mất (race).
+const maxSlugAttempts = 3
+
+// withUniqueSlug chọn slug chưa dùng cho title rồi gọi save. Giữa lúc chọn slug và lúc ghi,
+// một request khác cùng title có thể đã ghi đúng slug đó; khi ấy unique index trả về
+// ErrDuplicatedKey -> chọn lại slug (lúc này đã thấy slug kia) và thử lại.
+func (h *ArticleHandler) withUniqueSlug(title string, save func(slug string) error) error {
+	for attempt := 1; ; attempt++ {
+		slug, err := h.uniqueSlug(title)
+		if err != nil {
+			return err
+		}
+		err = save(slug)
+		if errors.Is(err, gorm.ErrDuplicatedKey) && attempt < maxSlugAttempts {
+			continue
+		}
+		return err
+	}
+}
+
+// resolveTags tải các tag theo ID (bỏ ID trùng). ID không tồn tại -> 422 thay vì
+// lặng lẽ bỏ qua. ids == nil trả về nil (với Update nghĩa là giữ nguyên tag).
+func (h *ArticleHandler) resolveTags(c echo.Context, ids []uint) ([]models.Tag, error) {
+	if ids == nil {
+		return nil, nil
+	}
+	seen := make(map[uint]bool, len(ids))
+	unique := make([]uint, 0, len(ids))
+	for _, id := range ids {
+		if !seen[id] {
+			seen[id] = true
+			unique = append(unique, id)
+		}
+	}
+
+	tags, err := h.tagRepo.FindByIDs(unique)
+	if err != nil {
+		return nil, dbError(c, err)
+	}
+	if len(tags) == len(unique) {
+		return tags, nil
+	}
+	found := make(map[uint]bool, len(tags))
+	for _, t := range tags {
+		found[t.ID] = true
+	}
+	var missing []string
+	for _, id := range unique {
+		if !found[id] {
+			missing = append(missing, strconv.FormatUint(uint64(id), 10))
+		}
+	}
+	return nil, echo.NewHTTPError(http.StatusUnprocessableEntity, "unknown tag_ids: "+strings.Join(missing, ", "))
 }
 
 // reservedSlugs trùng với route tĩnh dưới /api/articles nên không được dùng làm slug.
@@ -66,11 +123,6 @@ func (h *ArticleHandler) uniqueSlug(title string) (string, error) {
 	}
 	return slug, nil
 }
-
-const (
-	defaultPageLimit = 20
-	maxPageLimit     = 100
-)
 
 // List godoc
 // @Summary      Danh sách article (global feed)
@@ -133,27 +185,16 @@ func (h *ArticleHandler) listArticles(c echo.Context, filter repository.ArticleF
 // parseArticleFilter đọc và validate các query param chung: limit, offset, sort.
 // sort nhận "created_at", "-created_at" (dấu "-" = giảm dần), "updated_at", "title"...
 func parseArticleFilter(c echo.Context) (repository.ArticleFilter, error) {
-	f := repository.ArticleFilter{Limit: defaultPageLimit, SortBy: "created_at", Desc: true}
-	sort := "-created_at"
-
-	if err := echo.QueryParamsBinder(c).
-		Int("limit", &f.Limit).
-		Int("offset", &f.Offset).
-		String("sort", &sort).
-		BindError(); err != nil {
-		return f, echo.NewHTTPError(http.StatusBadRequest, "limit and offset must be integers")
+	f := repository.ArticleFilter{SortBy: "created_at", Desc: true}
+	var err error
+	if f.Limit, f.Offset, err = parsePage(c); err != nil {
+		return f, err
 	}
 
-	if f.Limit < 1 {
-		return f, echo.NewHTTPError(http.StatusBadRequest, "limit must be greater than 0")
+	sort := c.QueryParam("sort")
+	if sort == "" {
+		sort = "-created_at"
 	}
-	if f.Limit > maxPageLimit {
-		f.Limit = maxPageLimit
-	}
-	if f.Offset < 0 {
-		return f, echo.NewHTTPError(http.StatusBadRequest, "offset must not be negative")
-	}
-
 	f.Desc = strings.HasPrefix(sort, "-")
 	f.SortBy = strings.TrimPrefix(sort, "-")
 	if _, ok := repository.ArticleSortColumns[f.SortBy]; !ok {
@@ -201,7 +242,7 @@ func (h *ArticleHandler) Get(c echo.Context) error {
 // @Failure      422  {object}  handlers.ErrorResponse  "Dữ liệu không hợp lệ"
 // @Router       /articles [post]
 func (h *ArticleHandler) Create(c echo.Context) error {
-	authorID, err := requireUserID(c)
+	author, err := requireUser(c)
 	if err != nil {
 		return err
 	}
@@ -213,28 +254,25 @@ func (h *ArticleHandler) Create(c echo.Context) error {
 	if req.Title == "" {
 		return failure(c, http.StatusUnprocessableEntity, "title is required")
 	}
-	author, err := h.userRepo.FindByID(authorID)
+	tags, err := h.resolveTags(c, req.TagIDs)
 	if err != nil {
-		return failure(c, http.StatusUnauthorized, "user no longer exists")
+		return err
 	}
-	tags, err := h.tagRepo.FindByIDs(req.TagIDs)
-	if err != nil {
-		return dbError(c, err)
-	}
-
-	slug, err := h.uniqueSlug(req.Title)
-	if err != nil {
-		return dbError(c, err)
+	if tags == nil {
+		tags = []models.Tag{}
 	}
 
 	article := &models.Article{
 		Title:    req.Title,
-		Slug:     slug,
 		Body:     req.Body,
-		AuthorID: authorID,
+		AuthorID: author.ID,
 		Tags:     tags,
 	}
-	if err := h.repo.Create(article); err != nil {
+	err = h.withUniqueSlug(req.Title, func(slug string) error {
+		article.Slug = slug
+		return h.repo.Create(article)
+	})
+	if err != nil {
 		return dbError(c, err)
 	}
 
@@ -268,32 +306,33 @@ func (h *ArticleHandler) Update(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return failure(c, http.StatusBadRequest, "invalid request body")
 	}
+	slugChanged := false
 	if req.Title != nil {
 		title := strings.TrimSpace(*req.Title)
 		if title == "" {
 			return failure(c, http.StatusUnprocessableEntity, "title cannot be empty")
 		}
-		if slugify(title) != slugify(article.Title) {
-			slug, err := h.uniqueSlug(title)
-			if err != nil {
-				return dbError(c, err)
-			}
-			article.Slug = slug
-		}
+		slugChanged = slugify(title) != slugify(article.Title)
 		article.Title = title
 	}
 	if req.Body != nil {
 		article.Body = *req.Body
 	}
 
-	var tags []models.Tag
-	if req.TagIDs != nil {
-		if tags, err = h.tagRepo.FindByIDs(req.TagIDs); err != nil {
-			return dbError(c, err)
-		}
+	tags, err := h.resolveTags(c, req.TagIDs) // nil = giữ nguyên tag
+	if err != nil {
+		return err
 	}
 
-	if err := h.repo.Update(article, tags); err != nil {
+	if slugChanged {
+		err = h.withUniqueSlug(article.Title, func(slug string) error {
+			article.Slug = slug
+			return h.repo.Update(article, tags)
+		})
+	} else {
+		err = h.repo.Update(article, tags)
+	}
+	if err != nil {
 		return dbError(c, err)
 	}
 

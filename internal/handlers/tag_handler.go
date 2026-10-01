@@ -87,7 +87,8 @@ func (h *TagHandler) Create(c echo.Context) error {
 }
 
 // Update godoc
-// @Summary      Đổi tên tag
+// @Summary      Đổi tên tag (admin)
+// @Description  Chỉ admin: tag dùng chung cho mọi article.
 // @Tags         tags
 // @Accept       json
 // @Produce      json
@@ -97,6 +98,7 @@ func (h *TagHandler) Create(c echo.Context) error {
 // @Success      200  {object}  handlers.Response{data=dto.TagResponse}  "OK"
 // @Failure      400  {object}  handlers.ErrorResponse  "Body/param không hợp lệ"
 // @Failure      401  {object}  handlers.ErrorResponse  "Thiếu hoặc sai token"
+// @Failure      403  {object}  handlers.ErrorResponse  "Không phải admin"
 // @Failure      404  {object}  handlers.ErrorResponse  "Không tìm thấy"
 // @Failure      409  {object}  handlers.ErrorResponse  "Đã tồn tại"
 // @Failure      422  {object}  handlers.ErrorResponse  "Dữ liệu không hợp lệ"
@@ -127,14 +129,15 @@ func (h *TagHandler) Update(c echo.Context) error {
 }
 
 // Delete godoc
-// @Summary      Xoá tag
-// @Description  Tag cũng bị gỡ khỏi mọi article.
+// @Summary      Xoá tag (admin)
+// @Description  Chỉ admin. Tag cũng bị gỡ khỏi mọi article.
 // @Tags         tags
 // @Security     TokenAuth
 // @Param        id    path  int     true  "ID tag"
 // @Success      204  "No Content"
 // @Failure      400  {object}  handlers.ErrorResponse  "Body/param không hợp lệ"
 // @Failure      401  {object}  handlers.ErrorResponse  "Thiếu hoặc sai token"
+// @Failure      403  {object}  handlers.ErrorResponse  "Không phải admin"
 // @Failure      404  {object}  handlers.ErrorResponse  "Không tìm thấy"
 // @Router       /tags/{id} [delete]
 func (h *TagHandler) Delete(c echo.Context) error {

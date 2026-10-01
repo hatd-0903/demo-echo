@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -12,7 +13,7 @@ import (
 func isolate(t *testing.T) {
 	t.Helper()
 	t.Setenv("ENV_FILE", t.TempDir()+"/missing.env")
-	for _, k := range []string{"APP_ENV", "APP_PORT", "JWT_SECRET", "JWT_EXPIRES_IN", "CACHE_TTL", "REDIS_URL", "SWAGGER_ENABLED"} {
+	for _, k := range []string{"APP_ENV", "APP_PORT", "JWT_SECRET", "JWT_EXPIRES_IN", "CACHE_TTL", "REDIS_URL", "SWAGGER_ENABLED", "DB_AUTO_MIGRATE"} {
 		t.Setenv(k, "")
 		os.Unsetenv(k)
 	}
@@ -44,8 +45,11 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.RedisURL != "" {
 		t.Errorf("cache should be disabled by default")
 	}
-	if !cfg.SwaggerEnabled {
-		t.Errorf("swagger should be enabled by default in development")
+	if !cfg.SwaggerEnabled || !cfg.DBAutoMigrate {
+		t.Errorf("swagger and auto-migrate should be enabled by default in development")
+	}
+	if !strings.Contains(cfg.DSN(), "loc=UTC") {
+		t.Errorf("DSN must read times as UTC: %s", cfg.DSN())
 	}
 }
 
@@ -102,7 +106,7 @@ func TestLoadProductionWithValidSecret(t *testing.T) {
 	if !cfg.IsProduction() {
 		t.Error("expected production config")
 	}
-	if cfg.SwaggerEnabled {
-		t.Error("swagger should be disabled by default in production")
+	if cfg.SwaggerEnabled || cfg.DBAutoMigrate {
+		t.Error("swagger and auto-migrate should be disabled by default in production")
 	}
 }

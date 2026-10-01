@@ -27,6 +27,9 @@ type Config struct {
 	DBUser     string
 	DBPassword string
 	DBName     string
+	// DBAutoMigrate chạy migration lúc server khởi động. Mặc định bật ở development,
+	// tắt ở production (chạy riêng bằng `go run ./cmd/manage migrate` trước khi deploy).
+	DBAutoMigrate bool
 
 	JWTSecret string
 	JWTExpiry time.Duration
@@ -69,6 +72,9 @@ func Load() (*Config, error) {
 	if cfg.SwaggerEnabled, err = getBool("SWAGGER_ENABLED", cfg.AppEnv != EnvProduction); err != nil {
 		return nil, err
 	}
+	if cfg.DBAutoMigrate, err = getBool("DB_AUTO_MIGRATE", cfg.AppEnv != EnvProduction); err != nil {
+		return nil, err
+	}
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
@@ -99,8 +105,9 @@ func (c *Config) validate() error {
 	return nil
 }
 
+// DSN dùng loc=UTC: DATETIME được đọc/ghi theo UTC, không phụ thuộc timezone của máy chạy app.
 func (c *Config) DSN() string {
-	return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+	return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=UTC",
 		c.DBUser, c.DBPassword, c.DBHost, c.DBPort, c.DBName)
 }
 

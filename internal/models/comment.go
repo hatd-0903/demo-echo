@@ -10,13 +10,13 @@ type Comment struct {
 	ID   uint   `gorm:"primaryKey"`
 	Body string `gorm:"type:text;not null"`
 
-	// BelongsTo: comment thuộc về một article.
+	// BelongsTo: comment thuộc về một article. FK + CASCADE khai báo ở Article.Comments.
 	ArticleID uint     `gorm:"not null;index:idx_comments_article_created,priority:1"`
-	Article   *Article `gorm:"foreignKey:ArticleID;constraint:OnDelete:CASCADE"`
+	Article   *Article `gorm:"foreignKey:ArticleID"`
 
-	// BelongsTo: comment thuộc về một user (người bình luận).
+	// BelongsTo: comment thuộc về một user. FK + CASCADE khai báo ở User.Comments.
 	UserID uint  `gorm:"not null;index"`
-	User   *User `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
+	User   *User `gorm:"foreignKey:UserID"`
 
 	// Index ghép (article_id, created_at): lọc comment theo bài + ORDER BY created_at
 	// trong cùng một index, không phải sort thêm (filesort).

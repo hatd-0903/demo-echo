@@ -64,6 +64,7 @@ func TestNoNPlusOne(t *testing.T) {
 	w := newWorld(t)
 
 	// budget: articles = trang + users + article_tags + tags (COUNT bỏ qua khi trang chưa đầy).
+	// Route cần đăng nhập (feed) +1 query: middleware JWT nạp user để chặn token của user đã xoá.
 	endpoints := []struct {
 		name, path string
 		token      bool
@@ -71,7 +72,7 @@ func TestNoNPlusOne(t *testing.T) {
 	}{
 		{"list articles", "/api/articles?limit=100", false, 4},
 		{"list articles by tag", "/api/articles?tag=go&limit=100", false, 4},
-		{"feed", "/api/articles/feed?limit=100", true, 4},
+		{"feed", "/api/articles/feed?limit=100", true, 5},
 		{"list comments", "", false, 3}, // path điền sau khi có bài đầu tiên
 		{"list tags", "/api/tags", false, 1},
 	}
@@ -129,7 +130,9 @@ func TestQueryBudget(t *testing.T) {
 		e.call(t, "POST", "/api/articles", tok, map[string]any{"title": "Same title"}).expect(t, http.StatusCreated, nil)
 	}
 
-	// budget = số query sau khi tối ưu; (trước tối ưu) ghi lại để so sánh.
+	// budget = số query hiện tại; (trước tối ưu) ghi lại để so sánh.
+	// Route cần đăng nhập tốn 1 query nạp user trong middleware JWT (review #3); tạo bài /
+	// comment không tăng vì handler dùng lại user đó thay vì tự query.
 	steps := []struct {
 		name         string
 		method, path string
@@ -139,14 +142,14 @@ func TestQueryBudget(t *testing.T) {
 		budget       int64
 	}{
 		{"GET article by slug", "GET", "/api/articles/" + w.firstSlug, "", nil, 200, 4},                                        // (4)
-		{"GET profile (logged in)", "GET", "/api/profiles/author00", w.readerToken, nil, 200, 2},                               // (2)
+		{"GET profile (logged in)", "GET", "/api/profiles/author00", w.readerToken, nil, 200, 3},                               // (2)
 		{"POST article (2 tags)", "POST", "/api/articles", tok, map[string]any{"title": "Fresh", "tag_ids": w.tagIDs}, 201, 5}, // (10)
 		{"POST article (4th same title)", "POST", "/api/articles", tok, map[string]any{"title": "Same title"}, 201, 3},         // (9, tăng theo số bài trùng)
-		{"PUT article body", "PUT", "/api/articles/fresh", tok, map[string]any{"body": "new"}, 200, 6},                         // (9)
-		{"PUT article tags", "PUT", "/api/articles/fresh", tok, map[string]any{"tag_ids": w.tagIDs[:1]}, 200, 9},               // (14)
-		{"PUT article forbidden", "PUT", "/api/articles/fresh", w.readerToken, map[string]any{"body": "x"}, 403, 1},            // (4)
+		{"PUT article body", "PUT", "/api/articles/fresh", tok, map[string]any{"body": "new"}, 200, 7},                         // (9)
+		{"PUT article tags", "PUT", "/api/articles/fresh", tok, map[string]any{"tag_ids": w.tagIDs[:1]}, 200, 10},              // (14)
+		{"PUT article forbidden", "PUT", "/api/articles/fresh", w.readerToken, map[string]any{"body": "x"}, 403, 2},            // (4)
 		{"POST comment", "POST", "/api/articles/fresh/comments", w.readerToken, map[string]string{"body": "nice"}, 201, 3},     // (8)
-		{"DELETE article", "DELETE", "/api/articles/fresh", tok, nil, 204, 2},                                                  // (5)
+		{"DELETE article", "DELETE", "/api/articles/fresh", tok, nil, 204, 3},                                                  // (5)
 	}
 
 	t.Logf("%-32s %7s %7s", "operation", "queries", "budget")

@@ -39,9 +39,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to connect database: %v", err)
 	}
-	if err := database.Migrate(db); err != nil {
-		log.Fatalf("failed to migrate database: %v", err)
+	if cfg.DBAutoMigrate {
+		if err := database.Migrate(db); err != nil {
+			log.Fatalf("failed to migrate database: %v", err)
+		}
 	}
+
+	auth.CheckPasswordAgainstDummy("") // tạo sẵn hash giả để lần login đầu không chậm hơn
 
 	store, closeCache := setupCache(cfg)
 	defer closeCache()

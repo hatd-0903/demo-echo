@@ -57,8 +57,9 @@ func TestTagsCache(t *testing.T) {
 
 func TestArticlesCache(t *testing.T) {
 	app := newTestApp(t)
-	ownerToken, _ := app.register(t, "owner")
+	ownerToken, owner := app.register(t, "owner")
 	otherToken, _ := app.register(t, "other")
+	app.makeAdmin(t, owner.ID) // đổi tên tag cần admin
 	tag := app.createTag(t, ownerToken, "go")
 	app.createArticle(t, ownerToken, "First", tag.ID)
 

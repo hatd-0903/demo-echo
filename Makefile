@@ -13,6 +13,14 @@ test:
 e2e:
 	go test -tags e2e -count=1 -v ./internal/e2e/
 
+# Chạy migration (dùng khi DB_AUTO_MIGRATE=false, vd. production)
+migrate:
+	go run ./cmd/manage migrate
+
+# Cấp quyền admin: make admin EMAIL=alice@example.com
+admin:
+	go run ./cmd/manage set-role -email $(EMAIL) admin
+
 # Sinh lại tài liệu OpenAPI từ annotation trong handlers -> docs/
 swagger:
 	swag init -g cmd/server/main.go -o docs --parseInternal --outputTypes go,json,yaml
@@ -37,4 +45,4 @@ redis-cli:
 tidy:
 	go mod tidy
 
-.PHONY: run build test e2e swagger cover up down db-up redis-cli tidy
+.PHONY: run build test e2e migrate admin swagger cover up down db-up redis-cli tidy
