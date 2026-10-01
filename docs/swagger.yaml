@@ -1,0 +1,1133 @@
+basePath: /api
+definitions:
+  dto.ArticleListResponse:
+    properties:
+      articles:
+        items:
+          $ref: '#/definitions/dto.ArticleResponse'
+        type: array
+      articles_count:
+        example: 42
+        type: integer
+      limit:
+        example: 20
+        type: integer
+      offset:
+        example: 0
+        type: integer
+    type: object
+  dto.ArticleResponse:
+    properties:
+      author:
+        $ref: '#/definitions/dto.ProfileResponse'
+      body:
+        example: Nội dung bài viết...
+        type: string
+      created_at:
+        type: string
+      id:
+        example: 1
+        type: integer
+      slug:
+        example: hoc-golang-co-ban
+        type: string
+      tags:
+        items:
+          $ref: '#/definitions/dto.TagResponse'
+        type: array
+      title:
+        example: Học Golang cơ bản
+        type: string
+      updated_at:
+        type: string
+    type: object
+  dto.AuthUserResponse:
+    properties:
+      bio:
+        example: Gopher ở Hà Nội
+        type: string
+      created_at:
+        type: string
+      email:
+        example: alice@example.com
+        type: string
+      id:
+        example: 1
+        type: integer
+      image:
+        example: https://i.pravatar.cc/150
+        type: string
+      token:
+        example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        type: string
+      updated_at:
+        type: string
+      username:
+        example: alice
+        type: string
+    type: object
+  dto.CommentResponse:
+    properties:
+      author:
+        $ref: '#/definitions/dto.ProfileResponse'
+      body:
+        example: Bài viết hay quá!
+        type: string
+      created_at:
+        type: string
+      id:
+        example: 1
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  dto.CreateArticleRequest:
+    properties:
+      body:
+        example: Nội dung bài viết...
+        type: string
+      tag_ids:
+        example:
+        - 1
+        - 2
+        items:
+          type: integer
+        type: array
+      title:
+        example: Học Golang cơ bản
+        type: string
+    type: object
+  dto.CreateCommentRequest:
+    properties:
+      body:
+        example: Bài viết hay quá!
+        type: string
+    type: object
+  dto.LoginRequest:
+    properties:
+      email:
+        example: alice@example.com
+        type: string
+      password:
+        example: secret123
+        type: string
+    type: object
+  dto.ProfileResponse:
+    properties:
+      bio:
+        example: Gopher ở Hà Nội
+        type: string
+      following:
+        description: Following chỉ có ở các endpoint /api/profiles (nil = không trả
+          về).
+        example: false
+        type: boolean
+      image:
+        example: https://i.pravatar.cc/150
+        type: string
+      username:
+        example: alice
+        type: string
+    type: object
+  dto.RegisterRequest:
+    properties:
+      email:
+        example: alice@example.com
+        type: string
+      password:
+        example: secret123
+        minLength: 6
+        type: string
+      username:
+        example: alice
+        type: string
+    type: object
+  dto.TagRequest:
+    properties:
+      name:
+        example: golang
+        type: string
+    type: object
+  dto.TagResponse:
+    properties:
+      id:
+        example: 1
+        type: integer
+      name:
+        example: golang
+        type: string
+    type: object
+  dto.UpdateArticleRequest:
+    properties:
+      body:
+        example: Nội dung mới...
+        type: string
+      tag_ids:
+        description: gửi để thay toàn bộ tag; bỏ trống = giữ nguyên
+        example:
+        - 1
+        items:
+          type: integer
+        type: array
+      title:
+        example: Học Golang nâng cao
+        type: string
+    type: object
+  dto.UpdateUserRequest:
+    properties:
+      bio:
+        example: Gopher ở Hà Nội
+        type: string
+      email:
+        example: alice@example.com
+        type: string
+      image:
+        example: https://i.pravatar.cc/150
+        type: string
+      password:
+        example: new-secret123
+        minLength: 6
+        type: string
+      username:
+        example: alice
+        type: string
+    type: object
+  dto.UserResponse:
+    properties:
+      bio:
+        example: Gopher ở Hà Nội
+        type: string
+      created_at:
+        type: string
+      email:
+        example: alice@example.com
+        type: string
+      id:
+        example: 1
+        type: integer
+      image:
+        example: https://i.pravatar.cc/150
+        type: string
+      updated_at:
+        type: string
+      username:
+        example: alice
+        type: string
+    type: object
+  handlers.ErrorResponse:
+    properties:
+      message:
+        example: resource not found
+        type: string
+      success:
+        example: false
+        type: boolean
+    type: object
+  handlers.Response:
+    properties:
+      data: {}
+      message:
+        type: string
+      success:
+        example: true
+        type: boolean
+    type: object
+info:
+  contact: {}
+  description: |-
+    RealWorld API (Conduit) viết bằng Go + Echo + GORM + MySQL + Redis.
+    Mọi response có dạng {"success": bool, "message"?: string, "data"?: ...}.
+  title: demo_echo API
+  version: "1.0"
+paths:
+  /articles:
+    get:
+      description: 'Lọc theo tag/tác giả, sắp xếp, phân trang. Response được cache
+        (header X-Cache: HIT/MISS/BYPASS).'
+      parameters:
+      - description: Lọc theo tên tag
+        example: golang
+        in: query
+        name: tag
+        type: string
+      - description: Lọc theo username tác giả
+        example: alice
+        in: query
+        name: author
+        type: string
+      - default: 20
+        description: Số bài mỗi trang (1-100)
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Bỏ qua bao nhiêu bài
+        in: query
+        name: offset
+        type: integer
+      - default: -created_at
+        description: Cột sắp xếp, tiền tố - = giảm dần
+        enum:
+        - created_at
+        - -created_at
+        - updated_at
+        - -updated_at
+        - title
+        - -title
+        in: query
+        name: sort
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Cache:
+              description: HIT | MISS | BYPASS
+              type: string
+          schema:
+            allOf:
+            - $ref: '#/definitions/handlers.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.ArticleListResponse'
+              type: object
+        "400":
+          description: Body/param không hợp lệ
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Danh sách article (global feed)
+      tags:
+      - articles
+    post:
+      consumes:
+      - application/json
+      description: Tác giả lấy từ JWT. Slug sinh từ title (bỏ dấu tiếng Việt), trùng
+        thì thêm -2, -3...
+      parameters:
+      - description: Nội dung bài viết
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateArticleRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/handlers.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.ArticleResponse'
+              type: object
+        "400":
+          description: Body/param không hợp lệ
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Thiếu hoặc sai token
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: Dữ liệu không hợp lệ
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - TokenAuth: []
+      summary: Đăng bài
+      tags:
+      - articles
+  /articles/{slug}:
+    delete:
+      description: Chỉ tác giả được xoá.
+      parameters:
+      - description: Slug của article
+        example: hoc-golang-co-ban
+        in: path
+        name: slug
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Thiếu hoặc sai token
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Không phải chủ sở hữu
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Không tìm thấy
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - TokenAuth: []
+      summary: Xoá bài
+      tags:
+      - articles
+    get:
+      parameters:
+      - description: Slug của article
+        example: hoc-golang-co-ban
+        in: path
+        name: slug
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handlers.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.ArticleResponse'
+              type: object
+        "404":
+          description: Không tìm thấy
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Chi tiết article
+      tags:
+      - articles
+    put:
+      consumes:
+      - application/json
+      description: Chỉ tác giả được sửa. Đổi title thì slug đổi theo. Gửi tag_ids
+        để thay toàn bộ tag.
+      parameters:
+      - description: Slug của article
+        example: hoc-golang-co-ban
+        in: path
+        name: slug
+        required: true
+        type: string
+      - description: Các field cần sửa
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateArticleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handlers.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.ArticleResponse'
+              type: object
+        "400":
+          description: Body/param không hợp lệ
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Thiếu hoặc sai token
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Không phải chủ sở hữu
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Không tìm thấy
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: Dữ liệu không hợp lệ
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - TokenAuth: []
+      summary: Sửa bài
+      tags:
+      - articles
+  /articles/{slug}/comments:
+    get:
+      description: Mới nhất trước.
+      parameters:
+      - description: Slug của article
+        example: hoc-golang-co-ban
+        in: path
+        name: slug
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handlers.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/dto.CommentResponse'
+                  type: array
+              type: object
+        "404":
+          description: Không tìm thấy
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Danh sách comment
+      tags:
+      - comments
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Slug của article
+        example: hoc-golang-co-ban
+        in: path
+        name: slug
+        required: true
+        type: string
+      - description: Nội dung comment
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateCommentRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/handlers.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.CommentResponse'
+              type: object
+        "400":
+          description: Body/param không hợp lệ
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Thiếu hoặc sai token
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Không tìm thấy
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: Dữ liệu không hợp lệ
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - TokenAuth: []
+      summary: Thêm comment
+      tags:
+      - comments
+  /articles/feed:
+    get:
+      description: Bài viết của những người bạn đang follow. Không cache.
+      parameters:
+      - default: 20
+        description: Số bài mỗi trang (1-100)
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Bỏ qua bao nhiêu bài
+        in: query
+        name: offset
+        type: integer
+      - default: -created_at
+        description: Cột sắp xếp, tiền tố - = giảm dần
+        enum:
+        - created_at
+        - -created_at
+        - updated_at
+        - -updated_at
+        - title
+        - -title
+        in: query
+        name: sort
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handlers.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.ArticleListResponse'
+              type: object
+        "400":
+          description: Body/param không hợp lệ
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Thiếu hoặc sai token
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - TokenAuth: []
+      summary: Feed cá nhân
+      tags:
+      - articles
+  /profiles/{username}:
+    get:
+      description: 'Token là tuỳ chọn: có token thì "following" cho biết bạn có đang
+        follow user này không.'
+      parameters:
+      - description: Username
+        example: alice
+        in: path
+        name: username
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handlers.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.ProfileResponse'
+              type: object
+        "401":
+          description: Thiếu hoặc sai token
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Không tìm thấy
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - TokenAuth: []
+      summary: Profile công khai
+      tags:
+      - profiles
+  /profiles/{username}/follow:
+    delete:
+      parameters:
+      - description: Username
+        example: alice
+        in: path
+        name: username
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handlers.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.ProfileResponse'
+              type: object
+        "401":
+          description: Thiếu hoặc sai token
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Không tìm thấy
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - TokenAuth: []
+      summary: Unfollow user
+      tags:
+      - profiles
+    post:
+      description: 'Idempotent: follow lại người đã follow không báo lỗi.'
+      parameters:
+      - description: Username
+        example: alice
+        in: path
+        name: username
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handlers.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.ProfileResponse'
+              type: object
+        "401":
+          description: Thiếu hoặc sai token
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Không tìm thấy
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: Không thể tự follow chính mình
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - TokenAuth: []
+      summary: Follow user
+      tags:
+      - profiles
+  /tags:
+    get:
+      description: Sắp xếp theo tên. Response được cache (header X-Cache).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Cache:
+              description: HIT | MISS | BYPASS
+              type: string
+          schema:
+            allOf:
+            - $ref: '#/definitions/handlers.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/dto.TagResponse'
+                  type: array
+              type: object
+      summary: Danh sách tag
+      tags:
+      - tags
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Tên tag
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.TagRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/handlers.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.TagResponse'
+              type: object
+        "400":
+          description: Body/param không hợp lệ
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Thiếu hoặc sai token
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "409":
+          description: Đã tồn tại
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: Dữ liệu không hợp lệ
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - TokenAuth: []
+      summary: Tạo tag
+      tags:
+      - tags
+  /tags/{id}:
+    delete:
+      description: Tag cũng bị gỡ khỏi mọi article.
+      parameters:
+      - description: ID tag
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Body/param không hợp lệ
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Thiếu hoặc sai token
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Không tìm thấy
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - TokenAuth: []
+      summary: Xoá tag
+      tags:
+      - tags
+    get:
+      parameters:
+      - description: ID tag
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handlers.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.TagResponse'
+              type: object
+        "400":
+          description: Body/param không hợp lệ
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Không tìm thấy
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Chi tiết tag
+      tags:
+      - tags
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: ID tag
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Tên mới
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.TagRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handlers.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.TagResponse'
+              type: object
+        "400":
+          description: Body/param không hợp lệ
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Thiếu hoặc sai token
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Không tìm thấy
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "409":
+          description: Đã tồn tại
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: Dữ liệu không hợp lệ
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - TokenAuth: []
+      summary: Đổi tên tag
+      tags:
+      - tags
+  /user:
+    get:
+      description: Lấy user theo JWT (kèm token mới).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handlers.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.AuthUserResponse'
+              type: object
+        "401":
+          description: Thiếu hoặc sai token
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - TokenAuth: []
+      summary: User hiện tại
+      tags:
+      - auth
+  /users:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handlers.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/dto.UserResponse'
+                  type: array
+              type: object
+        "401":
+          description: Thiếu hoặc sai token
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - TokenAuth: []
+      summary: Danh sách user
+      tags:
+      - users
+    post:
+      consumes:
+      - application/json
+      description: Tạo tài khoản mới, trả về user kèm JWT. Mật khẩu được băm bằng
+        bcrypt.
+      parameters:
+      - description: Thông tin đăng ký
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/handlers.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.AuthUserResponse'
+              type: object
+        "400":
+          description: Body/param không hợp lệ
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "409":
+          description: Đã tồn tại
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: Dữ liệu không hợp lệ
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Đăng ký
+      tags:
+      - auth
+  /users/{id}:
+    delete:
+      description: Chỉ xoá được tài khoản của chính mình.
+      parameters:
+      - description: ID user
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Body/param không hợp lệ
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Thiếu hoặc sai token
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Không phải chủ sở hữu
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Không tìm thấy
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - TokenAuth: []
+      summary: Xoá tài khoản
+      tags:
+      - users
+    get:
+      parameters:
+      - description: ID user
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handlers.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.UserResponse'
+              type: object
+        "400":
+          description: Body/param không hợp lệ
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Thiếu hoặc sai token
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Không tìm thấy
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - TokenAuth: []
+      summary: Chi tiết user
+      tags:
+      - users
+    put:
+      consumes:
+      - application/json
+      description: Chỉ sửa được tài khoản của chính mình. Field nào không gửi thì
+        giữ nguyên.
+      parameters:
+      - description: ID user
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Các field cần sửa
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handlers.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.UserResponse'
+              type: object
+        "400":
+          description: Body/param không hợp lệ
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Thiếu hoặc sai token
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Không phải chủ sở hữu
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Không tìm thấy
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "409":
+          description: Đã tồn tại
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: Dữ liệu không hợp lệ
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - TokenAuth: []
+      summary: Cập nhật tài khoản
+      tags:
+      - users
+  /users/login:
+    post:
+      consumes:
+      - application/json
+      description: Sai email hay sai mật khẩu đều trả cùng lỗi 401 để không lộ email
+        nào đã đăng ký.
+      parameters:
+      - description: Email + mật khẩu
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handlers.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.AuthUserResponse'
+              type: object
+        "401":
+          description: Sai email hoặc mật khẩu
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: Dữ liệu không hợp lệ
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Đăng nhập
+      tags:
+      - auth
+schemes:
+- http
+- https
+securityDefinitions:
+  TokenAuth:
+    description: Nhập "Token <jwt>" (hoặc "Bearer <jwt>"). Lấy jwt từ /users/login.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
